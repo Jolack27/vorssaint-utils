@@ -18,6 +18,10 @@ enum DockAutohideHoldTests {
         var frontmostApplication: App? = App()
     }
     struct App { var processIdentifier: Int32 = 20 }
+    enum SessionActivity {
+        static let shared = State()
+        final class State { var isActive = true }
+    }
     static var activationEvents: [String] = []
     struct FrameRestoration {
         func restoration(for item: Int, isCurrent: @escaping () -> Bool) -> (() -> Void)? {
@@ -37,6 +41,7 @@ enum DockAutohideHoldTests {
     final class Service {
         typealias SwitcherItem = Int
         typealias NSWorkspace = Workspace
+        typealias SessionActivity = DockAutohideHoldTests.SessionActivity
         typealias DockPreviewFrameRestoration = FrameRestoration
         typealias WindowEnumerator = DockAutohideHoldTests.WindowEnumerator
         typealias WindowActivator = DockAutohideHoldTests.WindowActivator

@@ -678,7 +678,7 @@ final class AutoQuitService: ObservableObject {
 
     private func handleCloseRequestEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let closeRequestTap { CGEvent.tapEnable(tap: closeRequestTap, enable: true) }
+            if SessionActivity.shared.isActive, let closeRequestTap { CGEvent.tapEnable(tap: closeRequestTap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
 
