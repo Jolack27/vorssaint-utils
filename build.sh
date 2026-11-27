@@ -67,10 +67,14 @@ ENTITLEMENTS="Resources/Vorssaint.entitlements"
 LEGACY_IDENTITY="Vorssaint Utils Signing"
 
 developer_id_identity() {
-    security find-identity -v -p codesigning 2>/dev/null \
-        | grep 'Developer ID Application' \
-        | head -1 \
-        | sed -E 's/.*"(.*)".*/\1/' || true
+    local identities preferred
+    identities="$(security find-identity -v -p codesigning 2>/dev/null | grep 'Developer ID Application' || true)"
+    preferred="$(printf '%s\n' "$identities" | grep '(VHBVLLJ369)' | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)"
+    if [[ -n "$preferred" ]]; then
+        printf '%s\n' "$preferred"
+    else
+        printf '%s\n' "$identities" | head -1 | sed -E 's/.*"(.*)".*/\1/' || true
+    fi
 }
 
 # A find-identity listing also names certificates codesign then rejects (an
@@ -794,7 +798,8 @@ codesign_app() {
         codesign_with_timestamp_retry --force --strip-disallowed-xattrs --options runtime --timestamp \
             --entitlements "$ENTITLEMENTS" --sign "$DEVID" "$target"
     elif legacy_identity_installed; then
-        codesign --force --strip-disallowed-xattrs --sign "$LEGACY_IDENTITY" "$target"
+        codesign --force --strip-disallowed-xattrs --options runtime \
+            --entitlements "$ENTITLEMENTS" --sign "$LEGACY_IDENTITY" "$target"
     else
         codesign --force --strip-disallowed-xattrs --sign - "$target"
     fi
@@ -806,7 +811,7 @@ codesign_fan_helper() {
         codesign_with_timestamp_retry --force --strip-disallowed-xattrs --options runtime --timestamp \
             --identifier "$FAN_HELPER_ID" --sign "$DEVID" "$target"
     elif legacy_identity_installed; then
-        codesign --force --strip-disallowed-xattrs --identifier "$FAN_HELPER_ID" \
+        codesign --force --strip-disallowed-xattrs --options runtime --identifier "$FAN_HELPER_ID" \
             --sign "$LEGACY_IDENTITY" "$target"
     else
         codesign --force --strip-disallowed-xattrs --identifier "$FAN_HELPER_ID" --sign - "$target"
@@ -819,7 +824,7 @@ codesign_now_playing_adapter() {
         codesign_with_timestamp_retry --force --strip-disallowed-xattrs --options runtime --timestamp \
             --identifier "$NOW_PLAYING_ADAPTER_ID" --sign "$DEVID" "$target"
     elif legacy_identity_installed; then
-        codesign --force --strip-disallowed-xattrs --identifier "$NOW_PLAYING_ADAPTER_ID" \
+        codesign --force --strip-disallowed-xattrs --options runtime --identifier "$NOW_PLAYING_ADAPTER_ID" \
             --sign "$LEGACY_IDENTITY" "$target"
     else
         codesign --force --strip-disallowed-xattrs --identifier "$NOW_PLAYING_ADAPTER_ID" --sign - "$target"

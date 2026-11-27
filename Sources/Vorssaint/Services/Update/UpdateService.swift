@@ -27,13 +27,23 @@ final class UpdateService: ObservableObject {
     /// preview. Set alongside `.available`; cleared otherwise.
     @Published private(set) var availableNotes: String?
 
-    private let repository = "vorssaint/vorssaint-utils"
+    private let repository = AppInfo.repositorySlug
     private var downloadURL: URL?
     /// Size the release advertises for the asset, used to bound the download.
     private var downloadExpectedBytes: Int64?
     private var refreshTimer: Timer?
     private var notifiedVersion: String?   // last release we posted a notification for
     private var downloadSession: URLSession?
+    private lazy var metadataSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.urlCache = nil
+        config.httpCookieStorage = nil
+        config.httpShouldSetCookies = false
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        return URLSession(configuration: config)
+    }()
 
     private init() {}
 
@@ -127,11 +137,11 @@ final class UpdateService: ObservableObject {
         request.setValue("Vorssaint/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+        metadataSession.dataTask(with: request) { [weak self] data, _, error in
             guard let self else { return }
             DispatchQueue.main.async {
                 self.lastChecked = Date()
-                guard let data, error == nil else {
+                guard let data, error == nil, data.count <= 2 * 1024 * 1024 else {
                     self.availableNotes = nil
                     self.state = .failed(error?.localizedDescription ?? "-")
                     return

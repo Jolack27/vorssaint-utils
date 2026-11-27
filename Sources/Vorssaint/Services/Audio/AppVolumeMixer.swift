@@ -3281,21 +3281,27 @@ final class LevelCompensationWatch {
 /// A float the audio thread reads while another thread replaces it, one
 /// whole value at a time and without a lock.
 final class AtomicFloatBox {
-    private var bits: Int32
+    private let bits: UnsafeMutablePointer<Int32>
 
     init(_ value: Float) {
-        bits = Int32(bitPattern: value.bitPattern)
+        bits = .allocate(capacity: 1)
+        bits.initialize(to: Int32(bitPattern: value.bitPattern))
+    }
+
+    deinit {
+        bits.deinitialize(count: 1)
+        bits.deallocate()
     }
 
     var value: Float {
         get {
-            Float(bitPattern: UInt32(bitPattern: OSAtomicAdd32Barrier(0, &bits)))
+            Float(bitPattern: UInt32(bitPattern: OSAtomicAdd32Barrier(0, bits)))
         }
         set {
             let replacement = Int32(bitPattern: newValue.bitPattern)
             while true {
-                let current = OSAtomicAdd32Barrier(0, &bits)
-                if OSAtomicCompareAndSwap32Barrier(current, replacement, &bits) { return }
+                let current = OSAtomicAdd32Barrier(0, bits)
+                if OSAtomicCompareAndSwap32Barrier(current, replacement, bits) { return }
             }
         }
     }
@@ -3495,9 +3501,17 @@ private final class TapGainEngine: GainEngine {
     }
 
     private final class AtomicCycleBox {
-        private var bits: Int64 = 0
-        var value: UInt64 { UInt64(bitPattern: OSAtomicAdd64Barrier(0, &bits)) }
-        func increment() { _ = OSAtomicIncrement64Barrier(&bits) }
+        private let bits: UnsafeMutablePointer<Int64>
+        init() {
+            bits = .allocate(capacity: 1)
+            bits.initialize(to: 0)
+        }
+        deinit {
+            bits.deinitialize(count: 1)
+            bits.deallocate()
+        }
+        var value: UInt64 { UInt64(bitPattern: OSAtomicAdd64Barrier(0, bits)) }
+        func increment() { _ = OSAtomicIncrement64Barrier(bits) }
     }
 
     /// One linked limiter for every output channel, preallocated so the
@@ -3814,9 +3828,17 @@ private final class AirPlayGainEngine: GainEngine {
     private let appID: String
 
     private final class AtomicCycleBox {
-        private var bits: Int64 = 0
-        var value: UInt64 { UInt64(bitPattern: OSAtomicAdd64Barrier(0, &bits)) }
-        func increment() { _ = OSAtomicIncrement64Barrier(&bits) }
+        private let bits: UnsafeMutablePointer<Int64>
+        init() {
+            bits = .allocate(capacity: 1)
+            bits.initialize(to: 0)
+        }
+        deinit {
+            bits.deinitialize(count: 1)
+            bits.deallocate()
+        }
+        var value: UInt64 { UInt64(bitPattern: OSAtomicAdd64Barrier(0, bits)) }
+        func increment() { _ = OSAtomicIncrement64Barrier(bits) }
     }
 
     private let gainBox: AtomicFloatBox
