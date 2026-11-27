@@ -57,6 +57,7 @@ final class StatusItemController {
     /// so bind() only touches it once the feature is actually available,
     /// rather than for every launch regardless of whether anyone uses it.
     private var clipboardBindingsInstalled = false
+    private var micMuteBindingsInstalled = false
     private static let mainAutosaveName = "VorssaintMenuBarItem"
     private static let metricAutosavePrefix = "VorssaintMetric"
     private static let clipboardPreviewAutosaveName = "VorssaintClipboardPreview"
@@ -179,12 +180,6 @@ final class StatusItemController {
             .sink { [weak self] _ in self?.updateIconAppearance() }
             .store(in: &cancellables)
 
-        let micMute = MicMuteService.shared
-        micMute.$isMuted.combineLatest(micMute.$warning)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.refresh() }
-            .store(in: &cancellables)
-
         let awake = KeepAwakeManager.shared
         awake.$endDate.combineLatest(awake.$activeAutomationConditions, awake.$waitingForPower)
             .removeDuplicates { $0 == $1 }
@@ -216,6 +211,7 @@ final class StatusItemController {
             .store(in: &cancellables)
 
         bindClipboardPreviewIfAvailable()
+        bindMicMuteIfAvailable()
 
         defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
                                                                   object: nil,
@@ -239,6 +235,7 @@ final class StatusItemController {
             self.updateIconAppearance()
             self.refresh()
             self.bindClipboardPreviewIfAvailable()
+            self.bindMicMuteIfAvailable()
             self.syncClipboardPreviewItem()
         }
     }
@@ -250,6 +247,18 @@ final class StatusItemController {
     /// bring the service to life for every launch, reading its saved history
     /// file and scanning its image folder even for someone who never turned
     /// the feature on.
+    /// Same rule for the microphone mute state: the service is only touched once
+    /// the feature is installed, so launches without it never build it.
+    private func bindMicMuteIfAvailable() {
+        guard !micMuteBindingsInstalled, AppFeature.micMute.isAvailable else { return }
+        micMuteBindingsInstalled = true
+        let micMute = MicMuteService.shared
+        micMute.$isMuted.combineLatest(micMute.$warning)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &cancellables)
+    }
+
     private func bindClipboardPreviewIfAvailable() {
         guard !clipboardBindingsInstalled, AppFeature.clipboardHistory.isAvailable else { return }
         clipboardBindingsInstalled = true
@@ -309,7 +318,8 @@ final class StatusItemController {
     }
 
     private var currentMicBadgeActive: Bool {
-        MicMuteService.shared.isMuted
+        AppFeature.micMute.isAvailable
+            && MicMuteService.shared.isMuted
             && UserDefaults.standard.bool(forKey: DefaultsKey.micMuteMenuBarIndicator)
     }
 
@@ -579,7 +589,7 @@ final class StatusItemController {
         } else {
             toolTip = strings.statusIdleTooltip
         }
-        if UserDefaults.standard.bool(forKey: DefaultsKey.micMuteMenuBarIndicator), let warning = MicMuteService.shared.warning {
+        if AppFeature.micMute.isAvailable, UserDefaults.standard.bool(forKey: DefaultsKey.micMuteMenuBarIndicator), let warning = MicMuteService.shared.warning {
             toolTip += "\n" + warning.message
         }
         if button.toolTip != toolTip {

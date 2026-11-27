@@ -77,6 +77,7 @@ final class FinderCutPaste: ObservableObject {
     private var pasteImageAsFileEnabled = false
     private var imagePasteInProgress = false
     private var appObserver: NSObjectProtocol?
+    private var finderFrontmostCached = false
 
     private static let finderBundleID = "com.apple.finder"
     private static let syntheticPasteMarker: Int64 = 0x564F5249
@@ -107,17 +108,19 @@ final class FinderCutPaste: ObservableObject {
         showHUD = UserDefaults.standard.object(forKey: DefaultsKey.finderCutPasteShowHUD) as? Bool ?? true
         pasteImageAsFileEnabled = available
             && UserDefaults.standard.bool(forKey: DefaultsKey.finderPasteImageAsFile)
-        if SessionActivitySupport.tapShouldRun(featureWanted: cutPasteEnabled || pasteImageAsFileEnabled,
-                                               accessibilityGranted: AXIsProcessTrusted(),
-                                               sessionIsActive: SessionActivity.shared.isActive) {
+        let wantsTap = SessionActivitySupport.tapShouldRun(featureWanted: cutPasteEnabled || pasteImageAsFileEnabled,
+                                                           accessibilityGranted: AXIsProcessTrusted(),
+                                                           sessionIsActive: SessionActivity.shared.isActive)
+        let finderActive = isFinderFrontmost
+        tapLifecycleLock.withLock { finderFrontmostCached = finderActive }
+        if wantsTap {
+            installAppObserver()
             installTap()
         } else {
             removeTap()
-        }
-        if cutPasteEnabled {
-            installAppObserver()
-        } else {
             removeAppObserver()
+        }
+        if !cutPasteEnabled {
             clearMarks()
         }
         refreshPanel()
@@ -134,12 +137,14 @@ final class FinderCutPaste: ObservableObject {
 
     private func installAppObserver() {
         guard appObserver == nil else { return }
+        let finderActive = isFinderFrontmost
+        tapLifecycleLock.withLock { finderFrontmostCached = finderActive }
         appObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            self?.handleApplicationActivation()
+        ) { [weak self] notification in
+            self?.handleApplicationActivation(notification)
         }
     }
 
@@ -150,7 +155,11 @@ final class FinderCutPaste: ObservableObject {
         }
     }
 
-    private func handleApplicationActivation() {
+    private func handleApplicationActivation(_ notification: Notification) {
+        let activatedApp = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            ?? NSWorkspace.shared.frontmostApplication
+        let finderActive = activatedApp?.bundleIdentifier == Self.finderBundleID
+        tapLifecycleLock.withLock { finderFrontmostCached = finderActive }
         guard cutPasteEnabled else { return }
         refreshPanel()
     }
@@ -275,7 +284,8 @@ final class FinderCutPaste: ObservableObject {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         guard flags.contains(.maskCommand),
               !flags.contains(.maskControl), !flags.contains(.maskAlternate),
-              keyCode == Key.x || keyCode == Key.c || keyCode == Key.v
+              keyCode == Key.x || keyCode == Key.c || keyCode == Key.v,
+              tapLifecycleLock.withLock({ finderFrontmostCached })
         else { return Unmanaged.passUnretained(event) }
 
         var verdict: Unmanaged<CGEvent>?

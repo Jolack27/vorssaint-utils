@@ -494,10 +494,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // the popover draw its native material and corners there.
         popover.hasFullSizeContent = PanelSurface.popoverHostsFullSizeContent
         popover.delegate = self
+        AppAppearanceController.shared.follow(panel: popover)
+    }
+
+    /// The panel's SwiftUI tree is built on the first open, not at launch, so
+    /// a session that never opens the panel never pays for it.
+    private func ensurePopoverContent() {
+        guard popover.contentViewController == nil else { return }
         let host = NSHostingController(rootView: MenuPanelView())
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host
-        AppAppearanceController.shared.follow(panel: popover)
     }
 
     /// Shown and not on its way out. A click on a panel that is fading out
@@ -575,6 +581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // so it has to be right before the content is asked for its size.
         PanelInteractionState.shared.anchorScreen = statusScreen(for: button)
         popover.animates = false
+        ensurePopoverContent()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         MenuPanelFocus.shared.setPopoverVisible(popover.isShown)
         popover.animates = true
@@ -935,6 +942,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         popoverIsSwitchingAnchor = true
         MenuPanelFocus.shared.setSwitchingMetricAnchor(true)
         popover.animates = false
+        ensurePopoverContent()
         popover.show(relativeTo: positioningView.bounds,
                      of: positioningView,
                      preferredEdge: .minY)
@@ -1073,6 +1081,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         MenuPanelFocus.shared.setPopoverVisible(true)
         let showStartedAt = ProcessInfo.processInfo.systemUptime
+        ensurePopoverContent()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         let showDuration = ProcessInfo.processInfo.systemUptime - showStartedAt
         MenuPanelFocus.shared.setPopoverVisible(popover.isShown)

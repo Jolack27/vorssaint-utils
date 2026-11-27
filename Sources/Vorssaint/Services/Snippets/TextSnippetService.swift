@@ -394,28 +394,43 @@ final class TextSnippetService {
                         failureKeyCode: CGKeyCode?,
                         failureFlags: CGEventFlags = []) -> Bool {
         let didExpand = expansionSoundCue()
+        let expansionDate = Date()
+        if TextSnippetSupport.needsClipboard(snippet.replacement) {
+            GeneralPasteboardAccess.shared.async(timeout: 0.5, { _ in
+                NSPasteboard.general.string(forType: .string)
+            }, then: { clipboard in
+                let text = TextSnippetSupport.expand(
+                    snippet.replacement,
+                    date: expansionDate,
+                    clipboard: clipboard
+                )
+                Self.postExpansion(deleteCount: deleteCount,
+                                   typedTrigger: typedTrigger,
+                                   text: text,
+                                   trailingKeyCode: trailingKeyCode,
+                                   trailingFlags: trailingFlags,
+                                   trailingText: trailingText,
+                                   failureKeyCode: failureKeyCode,
+                                   failureFlags: failureFlags,
+                                   didExpand: didExpand)
+            })
+            return true
+        }
+        let text = TextSnippetSupport.expand(
+            snippet.replacement,
+            date: expansionDate,
+            clipboard: nil
+        )
         let post = { () -> Bool in
-            // Variable expansion is decided while the triggering event still
-            // belongs to this callback. Only an explicit clipboard variable
-            // pays for a synchronous read; the multiline write itself runs on
-            // the shared pasteboard lane.
-            let clipboard = TextSnippetSupport.needsClipboard(snippet.replacement)
-                ? NSPasteboard.general.string(forType: .string)
-                : nil
-            let text = TextSnippetSupport.expand(
-                snippet.replacement,
-                date: Date(),
-                clipboard: clipboard
-            )
-            return Self.postExpansion(deleteCount: deleteCount,
-                                      typedTrigger: typedTrigger,
-                                      text: text,
-                                      trailingKeyCode: trailingKeyCode,
-                                      trailingFlags: trailingFlags,
-                                      trailingText: trailingText,
-                                      failureKeyCode: failureKeyCode,
-                                      failureFlags: failureFlags,
-                                      didExpand: didExpand)
+            Self.postExpansion(deleteCount: deleteCount,
+                               typedTrigger: typedTrigger,
+                               text: text,
+                               trailingKeyCode: trailingKeyCode,
+                               trailingFlags: trailingFlags,
+                               trailingText: trailingText,
+                               failureKeyCode: failureKeyCode,
+                               failureFlags: failureFlags,
+                               didExpand: didExpand)
         }
         return Thread.isMainThread ? post() : DispatchQueue.main.sync(execute: post)
     }

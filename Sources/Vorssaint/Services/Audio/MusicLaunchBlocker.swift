@@ -186,7 +186,7 @@ final class MusicLaunchBlocker: ObservableObject {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             // A gap in observation invalidates the pending launch decision.
             lastMediaKeyAt = nil
-            CGEvent.tapEnable(tap: mediaKeyTap, enable: true)
+            if SessionActivity.shared.isActive { CGEvent.tapEnable(tap: mediaKeyTap, enable: true) }
             isMonitoring = CGEvent.tapIsEnabled(tap: mediaKeyTap)
             return Unmanaged.passUnretained(event)
         }

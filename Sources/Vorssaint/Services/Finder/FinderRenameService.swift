@@ -17,6 +17,8 @@ final class FinderRenameService {
 
     private let routeLock = NSLock()
     private var routeShortcut = GlobalShortcut.finderRenameDefault
+    private var routeFinderPID: pid_t?
+    private var appObserver: NSObjectProtocol?
 
     private let lifecycleLock = NSLock()
     private var tap: CFMachPort?
@@ -33,7 +35,11 @@ final class FinderRenameService {
     func syncWithPreferences() {
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.finderRenameShortcut,
                                             fallback: .finderRenameDefault)
-        routeLock.withLock { routeShortcut = shortcut }
+        let finderPID = Self.currentFinderFrontmostPID()
+        routeLock.withLock {
+            routeShortcut = shortcut
+            routeFinderPID = finderPID
+        }
         let enabled = AppFeature.finderRename.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.finderRenameEnabled)
         if SessionActivitySupport.tapShouldRun(featureWanted: enabled,
@@ -43,14 +49,45 @@ final class FinderRenameService {
             // hotkey long before the key reaches it: on a taken-over key the
             // claim is what makes the key arrive at all.
             SystemShortcutTakeover.claim(DefaultsKey.finderRenameShortcut, shortcut: shortcut)
+            installAppObserver()
             installTap()
         } else {
             removeTap()
+            removeAppObserver()
         }
     }
 
     func suspend() {
         removeTap()
+        removeAppObserver()
+    }
+
+    private static func currentFinderFrontmostPID() -> pid_t? {
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              front.bundleIdentifier == finderBundleID else { return nil }
+        return front.processIdentifier
+    }
+
+    private func installAppObserver() {
+        guard appObserver == nil else { return }
+        appObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                ?? NSWorkspace.shared.frontmostApplication
+            let pid = app?.bundleIdentifier == Self.finderBundleID ? app?.processIdentifier : nil
+            self.routeLock.withLock { self.routeFinderPID = pid }
+        }
+    }
+
+    private func removeAppObserver() {
+        if let observer = appObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            appObserver = nil
+        }
     }
 
     private func installTap() {
@@ -182,14 +219,13 @@ final class FinderRenameService {
         }
         guard type == .keyDown else { return Unmanaged.passUnretained(event) }
 
-        let shortcut = routeLock.withLock { routeShortcut }
+        let (shortcut, finderPID) = routeLock.withLock { (routeShortcut, routeFinderPID) }
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let modifiers = GlobalShortcutModifiers(cgFlags: event.flags)
-        guard shortcut.matches(keyCode: keyCode, modifiers: modifiers),
+        guard let finderPID,
+              shortcut.matches(keyCode: keyCode, modifiers: modifiers),
               AXIsProcessTrusted(),
-              let front = NSWorkspace.shared.frontmostApplication,
-              front.bundleIdentifier == Self.finderBundleID,
-              FinderRenameSupport.acceptsFocusedRole(focusedRole(for: front.processIdentifier)),
+              FinderRenameSupport.acceptsFocusedRole(focusedRole(for: finderPID)),
               let replacement = event.copy()
         else { return Unmanaged.passUnretained(event) }
 

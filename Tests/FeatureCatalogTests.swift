@@ -3340,6 +3340,10 @@ enum MusicLaunchBlockerContract {
         case musicBlock
         var isAvailable: Bool { Environment.available }
     }
+    enum SessionActivity {
+        static let shared = State()
+        final class State { var isActive = true }
+    }
     enum UserDefaults {
         static let standard = Store()
         final class Store {

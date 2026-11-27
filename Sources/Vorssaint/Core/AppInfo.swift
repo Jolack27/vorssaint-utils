@@ -7,8 +7,10 @@ import Foundation
 enum AppInfo {
     static let name = "Vorssaint"
     static let copyright = "© 2026 Vorssaint"
+    static let teamID = "VHBVLLJ369"
+    static let repositorySlug = "Jolack27/vorssaint-utils"
     static let websiteURL = URL(string: "https://vorssaint.com")!
-    static let repositoryURL = URL(string: "https://github.com/vorssaint/vorssaint-utils")!
+    static let repositoryURL = URL(string: "https://github.com/\(repositorySlug)")!
     static let coffeeURL = URL(string: "https://buymeacoffee.com/vorssaint")!
     static let discordURL = URL(string: "https://discord.gg/M6BwWH4BJp")!
     static let socialURL = URL(string: "https://x.com/vorssaint")!

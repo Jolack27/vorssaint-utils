@@ -2,13 +2,11 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-#if VORSSAINT_DEVELOPMENT
 import Security
 import CryptoKit
-#endif
 
 enum FanControlIdentifiers {
-    static let teamID = "3D485NHW29"
+    static let teamID = "VHBVLLJ369"
 
     #if VORSSAINT_DEVELOPMENT
     static let appBundleID = "com.vorssaint.utils.dev"
@@ -20,29 +18,50 @@ enum FanControlIdentifiers {
     static let plistName = "\(helperID).plist"
 
     static var appCodeRequirement: String {
-        #if VORSSAINT_DEVELOPMENT
-        guard let hash = self.currentLeafCertificateSHA1() else {
-            return "identifier \"\(appBundleID)\" and certificate leaf = H\"0000000000000000000000000000000000000000\""
-        }
-        return "identifier \"\(appBundleID)\" and certificate leaf = H\"\(hash)\""
-        #else
-        return "anchor apple generic and certificate leaf[subject.OU] = \"\(teamID)\" and identifier \"\(appBundleID)\""
-        #endif
+        codeRequirement(forIdentifier: appBundleID)
     }
 
     static var helperCodeRequirement: String {
-        #if VORSSAINT_DEVELOPMENT
-        guard let hash = self.currentLeafCertificateSHA1() else {
-            return "identifier \"\(helperID)\" and certificate leaf = H\"0000000000000000000000000000000000000000\""
+        codeRequirement(forIdentifier: helperID)
+    }
+
+    private static func codeRequirement(forIdentifier identifier: String) -> String {
+        #if !VORSSAINT_DEVELOPMENT
+        if currentSigningTeamID() == teamID {
+            return "anchor apple generic and certificate leaf[subject.OU] = \"\(teamID)\" and identifier \"\(identifier)\""
         }
-        return "identifier \"\(helperID)\" and certificate leaf = H\"\(hash)\""
+        #endif
+        if let hash = currentLeafCertificateSHA1() {
+            return "identifier \"\(identifier)\" and certificate leaf = H\"\(hash)\""
+        }
+        #if VORSSAINT_DEVELOPMENT
+        return "identifier \"\(identifier)\" and certificate leaf = H\"0000000000000000000000000000000000000000\""
         #else
-        return "anchor apple generic and certificate leaf[subject.OU] = \"\(teamID)\" and identifier \"\(helperID)\""
+        return "anchor apple generic and certificate leaf[subject.OU] = \"\(teamID)\" and identifier \"\(identifier)\""
         #endif
     }
 
-    #if VORSSAINT_DEVELOPMENT
+    private static func currentSigningTeamID() -> String? {
+        guard let info = currentSigningInfo(),
+              let team = info[kSecCodeInfoTeamIdentifier as String] as? String,
+              !team.isEmpty else {
+            return nil
+        }
+        return team
+    }
+
     private static func currentLeafCertificateSHA1() -> String? {
+        guard let info = currentSigningInfo(),
+              let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate],
+              let leaf = certificates.first else {
+            return nil
+        }
+        let data = SecCertificateCopyData(leaf) as Data
+        let digest = Insecure.SHA1.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func currentSigningInfo() -> [String: Any]? {
         var dynamicCode: SecCode?
         guard SecCodeCopySelf([], &dynamicCode) == errSecSuccess,
               let selfCode = dynamicCode else {
@@ -60,17 +79,8 @@ enum FanControlIdentifiers {
               let info = signingInfo as? [String: Any] else {
             return nil
         }
-
-        guard let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate],
-              let leaf = certificates.first else {
-            return nil
-        }
-
-        let data = SecCertificateCopyData(leaf) as Data
-        let digest = Insecure.SHA1.hash(data: data)
-        return digest.map { String(format: "%02x", $0) }.joined()
+        return info
     }
-    #endif
 }
 
 @objc protocol FanControlXPCProtocol {

@@ -2648,30 +2648,46 @@ final class WindowLayoutService: ObservableObject {
 
     private func gestureTarget(at point: CGPoint,
                                requiresResize: Bool) -> WindowGestureTarget? {
-        let system = AXUIElementCreateSystemWide()
-        // No cap here: on the system-wide element a timeout is the default for
-        // every question this process asks, whoever asks it (#938).
         var rawElement: AXUIElement?
         var window: AXUIElement?
-        if AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &rawElement) == .success,
-           let element = rawElement {
-            AXUIElementSetMessagingTimeout(element, 0.25)
-            if role(of: element) == (kAXWindowRole as String) {
-                window = element
-            } else {
-                window = windowAttribute(element, kAXWindowAttribute as String)
-                    ?? windowAttribute(element, kAXTopLevelUIElementAttribute as String)
+        let receivingID = WindowServerSupport.receivingWindow(at: point)
+        let receivingPID = receivingID.flatMap { WindowServerSupport.ownerProcessID(ofWindowID: $0) }
+        var resolvedAXApp: AXUIElement?
+        if let pid = receivingPID {
+            guard pid != ProcessInfo.processInfo.processIdentifier,
+                  let app = NSRunningApplication(processIdentifier: pid),
+                  !app.isTerminated, app.activationPolicy == .regular else { return nil }
+            let axApp = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(axApp, 0.15)
+            resolvedAXApp = axApp
+            if AXUIElementCopyElementAtPosition(axApp, Float(point.x), Float(point.y), &rawElement) == .success,
+               let element = rawElement {
+                AXUIElementSetMessagingTimeout(element, 0.25)
+                if role(of: element) == (kAXWindowRole as String) {
+                    window = element
+                } else {
+                    window = windowAttribute(element, kAXWindowAttribute as String)
+                        ?? windowAttribute(element, kAXTopLevelUIElementAttribute as String)
+                }
+            }
+        } else {
+            let system = AXUIElementCreateSystemWide()
+            if AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &rawElement) == .success,
+               let element = rawElement {
+                AXUIElementSetMessagingTimeout(element, 0.25)
+                if role(of: element) == (kAXWindowRole as String) {
+                    window = element
+                } else {
+                    window = windowAttribute(element, kAXWindowAttribute as String)
+                        ?? windowAttribute(element, kAXTopLevelUIElementAttribute as String)
+                }
             }
         }
         if window == nil {
             // Custom-drawn content may expose no AX child at the press point.
             // Resolve the exact click receiver, never a focused or covered window.
-            guard let windowID = WindowServerSupport.receivingWindow(at: point),
-                  let pid = WindowServerSupport.ownerProcessID(ofWindowID: windowID),
-                  pid != ProcessInfo.processInfo.processIdentifier,
-                  let app = NSRunningApplication(processIdentifier: pid),
-                  !app.isTerminated, app.activationPolicy == .regular else { return nil }
-            let axApp = AXUIElementCreateApplication(pid)
+            guard let windowID = receivingID,
+                  let axApp = resolvedAXApp else { return nil }
             // This extra search runs inside the mouse tap. Its whole scan must
             // fit one short budget, not a fresh timeout for every app window.
             window = AXWindowResolver.publishedElement(for: windowID, in: axApp,

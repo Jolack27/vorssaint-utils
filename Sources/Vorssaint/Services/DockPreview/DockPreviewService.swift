@@ -414,7 +414,9 @@ final class DockPreviewService: ObservableObject {
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            // Re-arming a tap that was handed back for a switched-away session
+            // would put the window-server stall straight back.
+            if SessionActivity.shared.isActive, let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
 

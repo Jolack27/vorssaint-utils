@@ -9,26 +9,46 @@ import Darwin
 
 /// A flag the audio thread raises and another thread reads later.
 final class RecorderAudioFlag {
-    private var bits: Int32 = 0
+    private let bits: UnsafeMutablePointer<Int32>
 
-    var value: Bool { OSAtomicAdd32Barrier(0, &bits) != 0 }
+    init() {
+        bits = .allocate(capacity: 1)
+        bits.initialize(to: 0)
+    }
+
+    deinit {
+        bits.deinitialize(count: 1)
+        bits.deallocate()
+    }
+
+    var value: Bool { OSAtomicAdd32Barrier(0, bits) != 0 }
 
     func raise() {
-        OSAtomicCompareAndSwap32Barrier(0, 1, &bits)
+        OSAtomicCompareAndSwap32Barrier(0, 1, bits)
     }
 }
 
 /// A host time one thread stores and others read, 0 for none.
 final class RecorderAudioHostTime {
-    private var bits: Int64 = 0
+    private let bits: UnsafeMutablePointer<Int64>
+
+    init() {
+        bits = .allocate(capacity: 1)
+        bits.initialize(to: 0)
+    }
+
+    deinit {
+        bits.deinitialize(count: 1)
+        bits.deallocate()
+    }
 
     var value: UInt64 {
-        get { UInt64(bitPattern: OSAtomicAdd64Barrier(0, &bits)) }
+        get { UInt64(bitPattern: OSAtomicAdd64Barrier(0, bits)) }
         set {
             let replacement = Int64(bitPattern: newValue)
             while true {
-                let current = OSAtomicAdd64Barrier(0, &bits)
-                if OSAtomicCompareAndSwap64Barrier(current, replacement, &bits) { return }
+                let current = OSAtomicAdd64Barrier(0, bits)
+                if OSAtomicCompareAndSwap64Barrier(current, replacement, bits) { return }
             }
         }
     }
